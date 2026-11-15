@@ -21,7 +21,7 @@ Where the ball meets your paddle sets its angle: the middle sends it back flat, 
 
 Pick Easy, Normal or Hard on the start screen. The choice is remembered.
 
-The presets differ in how long the AI takes to react, how fast its paddle moves and how far off its aim can be. During a match it also adjusts a little: whenever one side leads by two points or more, it tightens up or eases off by one notch per point, never more than 40% away from the preset, and it starts each match back at the preset. Long rallies make it 2% faster for every 10 hits.
+The presets differ in how long the AI takes to react, how fast its paddle moves and how far off its aim can be. During a match it also adjusts a little: whenever one side leads by two points or more, it tightens up or eases off by one notch per point, never more than 20% away from the preset, and it starts each match back at the preset. Long rallies make it 2% faster for every 10 hits.
 
 ## 2 players
 

@@ -34,15 +34,19 @@
   // ---------------------------------------------------------------- AI
   // reactionMs: delay before it reacts to a ball coming its way. maxSpeed: px/s.
   // errorPx: how far off its aim can be, re-rolled for every approach.
+  // The AI goes straight to where the ball will arrive, so above roughly 300 px/s it reaches every
+  // ball, even at top ball speed. The speeds (and the adaptation limit below) keep it under that:
+  // a well-placed shot can always win the point, and the harder the preset, the faster the ball
+  // has to be going first.
   var PRESETS = {
-    easy: { label: 'Easy', reactionMs: 320, maxSpeed: 300, errorPx: 70 },
-    normal: { label: 'Normal', reactionMs: 180, maxSpeed: 420, errorPx: 40 },
-    hard: { label: 'Hard', reactionMs: 80, maxSpeed: 560, errorPx: 15 }
+    easy: { label: 'Easy', reactionMs: 320, maxSpeed: 150, errorPx: 70 },
+    normal: { label: 'Normal', reactionMs: 180, maxSpeed: 180, errorPx: 40 },
+    hard: { label: 'Hard', reactionMs: 80, maxSpeed: 220, errorPx: 15 }
   };
   var DIFFICULTIES = ['easy', 'normal', 'hard'];
   var AI_KEYS = ['reactionMs', 'maxSpeed', 'errorPx'];
   var AI_HARDER = { reactionMs: -15, maxSpeed: 15, errorPx: -4 }; // one adaptation notch
-  var AI_ADAPT_LIMIT = 0.4;                 // never more than 40% away from the preset
+  var AI_ADAPT_LIMIT = 0.2;                 // never more than 20% away from the preset
   var AI_DEADZONE = 12;                     // px around the target where it holds still
   var AI_DRIFT = 0.4;                       // share of its speed used to drift back to centre
   var AI_RALLY_BONUS = 0.02;                // extra speed for every 10 hits in the rally
@@ -274,7 +278,7 @@
   }
 
   // Light touch, after each point: only when someone leads by two or more, the AI
-  // moves one notch toward whoever is behind, within 40% of its preset.
+  // moves one notch toward whoever is behind, within 20% of its preset.
   function aiAdapt() {
     var diff = score[LEFT] - score[RIGHT];
     var dir = diff >= 2 ? 1 : diff <= -2 ? -1 : 0;
