@@ -21,12 +21,31 @@
   var SERVE_SPREAD = 25 * Math.PI / 180;
   var PADDLE_SPEED = 540;                   // keyboard and touch buttons
   var POINTER_ACTIVE_MS = 500;              // a hovering mouse steers this long after its last move
-  var CPU_SPEED = 180, CPU_DEADZONE = 35;   // was 6 px/frame; replaced by the adaptive AI in step 2
+
+  // ---------------------------------------------------------------- AI
+  // reactionMs: delay before it reacts to a ball coming its way. maxSpeed: px/s.
+  // errorPx: how far off its aim can be, re-rolled for every approach.
+  var PRESETS = {
+    easy: { label: 'Easy', reactionMs: 320, maxSpeed: 300, errorPx: 70 },
+    normal: { label: 'Normal', reactionMs: 180, maxSpeed: 420, errorPx: 40 },
+    hard: { label: 'Hard', reactionMs: 80, maxSpeed: 560, errorPx: 15 }
+  };
+  var DIFFICULTIES = ['easy', 'normal', 'hard'];
+  var AI_KEYS = ['reactionMs', 'maxSpeed', 'errorPx'];
+  var AI_HARDER = { reactionMs: -15, maxSpeed: 15, errorPx: -4 }; // one adaptation notch
+  var AI_ADAPT_LIMIT = 0.4;                 // never more than 40% away from the preset
+  var AI_DEADZONE = 12;                     // px around the target where it holds still
+  var AI_DRIFT = 0.4;                       // share of its speed used to drift back to centre
+  var AI_RALLY_BONUS = 0.02;                // extra speed for every 10 hits in the rally
 
   var LEFT = 0, RIGHT = 1;
 
   // ---------------------------------------------------------------- state
   var mode = 'ai';                          // 'ai' | '2p'
+  var difficulty = 'normal';                // key of PRESETS, saved in arcade.tennis.difficulty
+  var phase = 'start';                      // 'start' | 'rally'
+  var ai = { reactionMs: 0, maxSpeed: 0, errorPx: 0, incoming: false, waited: 0, error: 0 };
+  var rallyHits = 0;                        // paddle hits since the serve
   var ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, r: BALL_R };
   var left = { y: (H - PADDLE_HEIGHT) / 2 };
   var right = { y: (H - PADDLE_HEIGHT) / 2 };
@@ -36,10 +55,58 @@
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
   // ---------------------------------------------------------------- match flow
+  function showStart() {
+    phase = 'start';
+    A.ui.overlay({
+      title: 'Tennis',
+      buttons: DIFFICULTIES.map(function (d) {
+        return { label: PRESETS[d].label, keepOpen: true, onClick: function () { setDifficulty(d); showStart(); } };
+      }),
+      hint: 'Space to serve',
+      action: newMatch
+    });
+    markSelected(DIFFICULTIES.indexOf(difficulty));
+    refreshHud();
+  }
+
+  // Highlight the chosen option among the overlay's buttons.
+  function markSelected(index) {
+    var btns = document.querySelectorAll('.arcade-overlay .arcade-btn');
+    Array.prototype.forEach.call(btns, function (btn, i) {
+      var on = i === index;
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.style.borderColor = on ? T.brass : '';
+      btn.style.color = on ? T.brassHi : '';
+      btn.style.background = on ? T.surface2 : '';
+    });
+  }
+
+  function setDifficulty(d) {
+    difficulty = d;
+    A.store.set('difficulty', d);
+  }
+
+  function refreshHud() {
+    A.ui.hud({ AI: PRESETS[difficulty].label });
+  }
+
   function newMatch() {
     score[LEFT] = 0; score[RIGHT] = 0;
     left.y = right.y = (H - PADDLE_HEIGHT) / 2;
+    aiReset();
+    phase = 'rally';
+    refreshHud();
     serve(Math.random() < 0.5 ? -1 : 1);
+  }
+
+  // R: restart the match in progress (on the start screen there is nothing to restart).
+  function onRestart() {
+    if (phase === 'start') showStart(); else newMatch();
+  }
+
+  // The shell's pause overlay replaces ours; put the start screen back afterwards.
+  function onPauseChange(paused) {
+    if (!paused && phase === 'start') showStart();
   }
 
   // dir: -1 serves toward the left player, +1 toward the right.
@@ -48,10 +115,13 @@
     ball.x = W / 2; ball.y = H / 2;
     ball.vx = dir * BALL_SPEED0 * Math.cos(a);
     ball.vy = BALL_SPEED0 * Math.sin(a);
+    rallyHits = 0;
+    ai.incoming = false;
   }
 
   function pointTo(side) {
     score[side]++;
+    if (mode === 'ai') aiAdapt();
     serve(side === LEFT ? 1 : -1);          // toward whoever just conceded
   }
 
@@ -84,11 +154,51 @@
     }
   }
 
-  function moveComputer(dt) {
-    var c = right.y + PADDLE_HEIGHT / 2;
-    if (c < ball.y - CPU_DEADZONE) right.y += CPU_SPEED * dt;
-    else if (c > ball.y + CPU_DEADZONE) right.y -= CPU_SPEED * dt;
-    right.y = clamp(right.y, 0, H - PADDLE_HEIGHT);
+  // ---------------------------------------------------------------- AI paddle
+  function aiReset() {
+    var p = PRESETS[difficulty];
+    AI_KEYS.forEach(function (k) { ai[k] = p[k]; });
+    ai.incoming = false;
+  }
+
+  // Light touch, after each point: only when someone leads by two or more, the AI
+  // moves one notch toward whoever is behind, within 40% of its preset.
+  function aiAdapt() {
+    var diff = score[LEFT] - score[RIGHT];
+    var dir = diff >= 2 ? 1 : diff <= -2 ? -1 : 0;
+    if (!dir) return;
+    var p = PRESETS[difficulty];
+    AI_KEYS.forEach(function (k) {
+      ai[k] = clamp(ai[k] + dir * AI_HARDER[k], p[k] * (1 - AI_ADAPT_LIMIT), p[k] * (1 + AI_ADAPT_LIMIT));
+    });
+  }
+
+  // Where the ball will be when it reaches the AI's paddle face, following it off the walls.
+  function predictY() {
+    var t = Math.max(0, (RIGHT_FACE - BALL_R - ball.x) / ball.vx);
+    var y = ball.y + ball.vy * t, lo = BALL_R, hi = H - BALL_R;
+    for (var i = 0; i < 32 && (y < lo || y > hi); i++) y = y < lo ? 2 * lo - y : 2 * hi - y;
+    return clamp(y, lo, hi);
+  }
+
+  function moveAI(dt) {
+    if (ball.x + BALL_R > RIGHT_FACE) return;              // already beaten
+    var incoming = ball.vx > 0;
+    if (incoming && !ai.incoming) {                        // a new approach: restart the reaction clock, re-roll the aim
+      ai.waited = 0;
+      ai.error = (Math.random() * 2 - 1) * ai.errorPx;
+    }
+    ai.incoming = incoming;
+    if (incoming) ai.waited += dt * 1000;
+
+    var speed = ai.maxSpeed * (1 + AI_RALLY_BONUS * Math.floor(rallyHits / 10));
+    var target;
+    if (incoming && ai.waited >= ai.reactionMs) target = predictY() + ai.error;
+    else { target = H / 2; speed *= AI_DRIFT; }
+
+    var d = target - (right.y + PADDLE_HEIGHT / 2);
+    if (Math.abs(d) <= AI_DEADZONE) return;
+    right.y = clamp(right.y + (d > 0 ? 1 : -1) * Math.min(speed * dt, Math.abs(d)), 0, H - PADDLE_HEIGHT);
   }
 
   // ---------------------------------------------------------------- ball
@@ -104,6 +214,7 @@
     ball.vx = dir * speed * Math.cos(angle);
     ball.vy = speed * Math.sin(angle);
     ball.x = dir > 0 ? LEFT_FACE + BALL_R : RIGHT_FACE - BALL_R;
+    rallyHits++;
   }
 
   // Once the ball is past a paddle's face the point is lost; the paddle gives way so the two never overlap.
@@ -141,8 +252,9 @@
 
   // ---------------------------------------------------------------- frame
   function update(dt) {
+    if (phase === 'start') return;
     movePlayers(dt);
-    if (mode === 'ai') moveComputer(dt);
+    if (mode === 'ai') moveAI(dt);
     stepBall(dt);
   }
 
@@ -169,13 +281,16 @@
   }
 
   // ---------------------------------------------------------------- boot
-  A.init({ game: 'tennis', title: 'Tennis', onRestart: newMatch });
+  A.init({ game: 'tennis', title: 'Tennis', onRestart: onRestart, onPauseChange: onPauseChange });
   A.input.capture(['ArrowUp', 'ArrowDown', 'KeyW', 'KeyS', 'Space']);
   A.input.onPointerMove(function (p, id) {
     if (!A.input.pointers[id]) { hover.t = performance.now(); hover.y = p.y; }
   });
   A.touch.buttons([{ label: '▲', code: 'PadUp' }, { label: '▼', code: 'PadDown' }], 'left');
 
-  newMatch();
+  var saved = A.store.get('difficulty', 'normal');
+  if (DIFFICULTIES.indexOf(saved) >= 0) difficulty = saved;
+
+  showStart();
   A.loop(update, draw);
 })();
