@@ -111,17 +111,30 @@
     refreshHud();
   }
 
-  // On a phone the court is short and the shell's roomy card can be taller than it: tighten the spacing.
+  // On a phone the court is short and the shell's roomy card can be taller or wider than it:
+  // tighten the spacing, and on the smallest screens the type as well, until the card fits.
   function fitOverlay() {
     var o = document.querySelector('.arcade-overlay'), box = o.querySelector('.arcade-overlay-box');
-    if (box.offsetHeight <= o.clientHeight) return;
     function each(sel, fn) { Array.prototype.forEach.call(box.querySelectorAll(sel), fn); }
+    function fits() {
+      var f = o.getBoundingClientRect(), ok = box.offsetHeight <= o.clientHeight;
+      each('.arcade-btn', function (e) { var r = e.getBoundingClientRect(); if (r.bottom > f.bottom + 0.5 || r.top < f.top - 0.5) ok = false; });
+      return ok;
+    }
+    if (fits()) return;
     box.style.padding = '4px 12px';
+    box.style.maxWidth = '96%';
     each('.arcade-overlay-title', function (e) { e.style.marginBottom = '4px'; });
     each('.arcade-overlay-line', function (e) { e.style.fontSize = '15px'; e.style.margin = '2px 0'; });
     each('.arcade-overlay-buttons', function (e) { e.style.marginTop = '8px'; e.style.gap = '6px 8px'; });
     each('.arcade-btn', function (e) { e.style.padding = '5px 12px'; });
     each('.arcade-overlay-hint', function (e) { e.style.marginTop = '8px'; });
+    if (fits()) return;
+    each('.arcade-overlay-title', function (e) { e.style.fontSize = '24px'; e.style.marginBottom = '2px'; });
+    each('.arcade-overlay-line', function (e) { e.style.fontSize = '13px'; e.style.margin = '1px 0'; });
+    each('.arcade-overlay-buttons', function (e) { e.style.marginTop = '6px'; e.style.gap = '5px 6px'; });
+    each('.arcade-btn', function (e) { e.style.fontSize = '13px'; e.style.padding = '3px 10px'; });
+    each('.arcade-overlay-hint', function (e) { e.style.fontSize = '13px'; e.style.marginTop = '5px'; });
   }
 
   function setDifficulty(d) {

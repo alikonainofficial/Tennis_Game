@@ -45,4 +45,4 @@ After a match against the AI, "Copy result" copies a line such as `🏓 Beat the
 
 ## Development
 
-A plain static site with no build step: `index.html`, `js/game.js` and the arcade shell (`js/arcade-shell.js`, `css/arcade-shell.css`). The shell is shared with the other arcade games, so change it there rather than in this repo. To run it locally, open `index.html` in a browser or serve the folder with any static file server.
+A plain static site with no build step: `index.html`, `js/game.js`, `css/game.css` and the arcade shell (`js/arcade-shell.js`, `css/arcade-shell.css`). The shell is shared with the other arcade games, so change it there rather than in this repo. To run it locally, open `index.html` in a browser or serve the folder with any static file server.
