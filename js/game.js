@@ -66,8 +66,12 @@
   var trail = [], trailT = 0;
   var ai = { reactionMs: 0, maxSpeed: 0, errorPx: 0, incoming: false, waited: 0, error: 0 };
   var hover = { t: -Infinity, y: 0 };       // last mouse move with no button held
+  var motionQuery = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+
+  // Reduced motion: no screen shake, no ball trail.
+  function reducedMotion() { return !!(motionQuery && motionQuery.matches); }
 
   // ---------------------------------------------------------------- overlays and HUD
   function showStart() {
@@ -78,7 +82,13 @@
     ].concat(DIFFICULTIES.map(function (d) {
       return { label: PRESETS[d].label, keepOpen: true, onClick: function () { setDifficulty(d); showStart(); } };
     }));
-    A.ui.overlay({ title: 'Tennis', buttons: buttons, hint: 'Space to serve', action: newMatch });
+    A.ui.overlay({
+      title: 'Tennis',
+      lines: [mode === 'ai' ? 'Move: mouse, W/S or drag' : 'Left: W/S · Right: ↑/↓ or drag', 'First to ' + WIN_SCORE],
+      buttons: buttons,
+      hint: A.touch.isCoarse() ? 'Tap to serve' : 'Space to serve',
+      action: newMatch
+    });
 
     // Dress the shell's button row: mode on one line, difficulty on the next, current choices lit.
     var btns = document.querySelectorAll('.arcade-overlay .arcade-btn');
@@ -97,7 +107,21 @@
       A.ui.hideOverlay();
       newMatch();
     });
+    fitOverlay();
     refreshHud();
+  }
+
+  // On a phone the court is short and the shell's roomy card can be taller than it: tighten the spacing.
+  function fitOverlay() {
+    var o = document.querySelector('.arcade-overlay'), box = o.querySelector('.arcade-overlay-box');
+    if (box.offsetHeight <= o.clientHeight) return;
+    function each(sel, fn) { Array.prototype.forEach.call(box.querySelectorAll(sel), fn); }
+    box.style.padding = '4px 12px';
+    each('.arcade-overlay-title', function (e) { e.style.marginBottom = '4px'; });
+    each('.arcade-overlay-line', function (e) { e.style.fontSize = '15px'; e.style.margin = '2px 0'; });
+    each('.arcade-overlay-buttons', function (e) { e.style.marginTop = '8px'; e.style.gap = '6px 8px'; });
+    each('.arcade-btn', function (e) { e.style.padding = '5px 12px'; });
+    each('.arcade-overlay-hint', function (e) { e.style.marginTop = '8px'; });
   }
 
   function setDifficulty(d) {
@@ -124,6 +148,7 @@
       title = (leftWon ? 'Left wins ' : 'Right wins ') + result;
     }
     A.ui.overlay({ kicker: 'Match over', title: title, lines: lines, buttons: buttons });
+    fitOverlay();
   }
 
   // 🏓 Beat the AI (Normal) 7–4 · longest rally 23   /   🏓 Lost to the AI (Hard) 5–7 · longest rally 31
@@ -293,7 +318,7 @@
     rallyHits++;
     p.flash = FLASH_TIME;
     A.sfx.play('hit', rallyHits);                          // pitch climbs with the rally
-    if (speed > SHAKE_SPEED) A.fx.shake(2, 80);
+    if (speed > SHAKE_SPEED && !reducedMotion()) A.fx.shake(2, 80);
     if (rallyHits % RALLY_BANNER_EVERY === 0) { banner.text = 'Rally ' + rallyHits + '!'; banner.t = RALLY_BANNER_TIME; }
   }
 
@@ -327,7 +352,8 @@
     if (ball.x + BALL_R > RIGHT_FACE) yieldToBall(right);
 
     trailT += dt;
-    if (trailT >= TRAIL_STEP) {
+    if (reducedMotion()) trail.length = 0;
+    else if (trailT >= TRAIL_STEP) {
       trailT = 0;
       trail.push({ x: ball.x, y: ball.y });
       if (trail.length > TRAIL_LENGTH) trail.shift();
@@ -392,16 +418,22 @@
     if (phase === 'serve' && Math.max(score[LEFT], score[RIGHT]) === WIN_SCORE - 1) A.ui.banner(c, 'Match point', { color: T.coral });
     if (banner.t > 0) A.ui.banner(c, banner.text);
 
-    drawPaddle(c, left, 0, T.magenta);
-    drawPaddle(c, right, W - PADDLE_WIDTH, T.blue);
-
-    if (phase === 'serve' || phase === 'rally') {
+    // Trail under the paddles, ball on top.
+    var live = phase === 'serve' || phase === 'rally';
+    if (live) {
       c.fillStyle = T.text;
       for (i = 0; i < trail.length; i++) {
         c.globalAlpha = 0.05 + 0.25 * (i + 1) / (trail.length + 1);
         c.beginPath(); c.arc(trail[i].x, trail[i].y, BALL_R * (0.5 + 0.5 * (i + 1) / (trail.length + 1)), 0, Math.PI * 2); c.fill();
       }
       c.globalAlpha = 1;
+    }
+
+    drawPaddle(c, left, 0, T.magenta);
+    drawPaddle(c, right, W - PADDLE_WIDTH, T.blue);
+
+    if (live) {
+      c.fillStyle = T.text;
       c.beginPath(); c.arc(ball.x, ball.y, BALL_R, 0, Math.PI * 2); c.fill();
     }
   }
