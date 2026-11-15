@@ -1,0 +1,10 @@
+/* game.css — Tennis tweaks on top of the shared shell look.
+   Loaded BEFORE css/arcade-shell.css (as that file asks), so each selector here is one class
+   more specific than the shell rule it overrides. */
+
+/* Overlay body lines ("First to 7", "Longest rally 23", "Tab lost focus", ...) and overlay buttons
+   in the same pixel/monospace stack as the overlay title and HUD instead of the system sans. */
+.arcade-overlay .arcade-overlay-line,
+.arcade-overlay .arcade-btn {
+  font-family: "Pixelify Sans", "Silkscreen", "Courier New", monospace;
+}
